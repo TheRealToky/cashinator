@@ -33,13 +33,13 @@ dependencies:
   # System share sheet (WhatsApp, Xender, etc.) for exported files.
   share_plus: ^13.3.0
 
+  # FFI database support for Windows / desktop.
+  sqflite_common_ffi: ^2.3.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
-
-  # Runs the real schema in tests without a device or emulator.
-  sqflite_common_ffi: ^2.3.3
 
 flutter:
   uses-material-design: true
