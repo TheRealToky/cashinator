@@ -5,7 +5,11 @@ import 'package:archive/archive.dart';
 import 'package:cashinator/core/app_date.dart';
 import 'package:cashinator/data/models/order.dart';
 import 'package:cashinator/export/excel_exporter.dart';
+import 'package:cashinator/export/expense_export_data.dart';
 import 'package:cashinator/export/export_data.dart';
+import 'package:cashinator/export/export_format.dart';
+import 'package:cashinator/export/production_export_data.dart';
+import 'package:cashinator/export/unsold_export_data.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'export_data_test.dart' show makeOrder;
@@ -139,4 +143,39 @@ void main() {
     expect(empty.daySummaries, isEmpty);
     expect(empty.isEmpty, isTrue);
   });
+
+  test('buildAllWorkbookBytes produces a workbook with all 8 sheets and valid zip', () {
+    const expenseBuilder = ExpenseExportBuilder();
+    const productionBuilder = ProductionExportBuilder();
+    const unsoldBuilder = UnsoldExportBuilder();
+
+    final salesData = sampleData();
+    final expenseData = expenseBuilder.build(expenses: const [], from: day, to: day);
+    final productionData = productionBuilder.build(logs: const [], from: day, to: day);
+    final unsoldData = unsoldBuilder.build(logs: const [], from: day, to: day);
+
+    final bytes = exporter.buildAllWorkbookBytes(
+      sales: salesData,
+      expenses: expenseData,
+      production: productionData,
+      unsold: unsoldData,
+    );
+
+    expect(bytes, isNotEmpty);
+    expect(bytes.take(4).toList(), [0x50, 0x4B, 0x03, 0x04]);
+
+    final archive = ZipDecoder().decodeBytes(bytes);
+    final workbookXmlFile = archive.files.firstWhere((f) => f.name == 'xl/workbook.xml');
+    final xml = utf8.decode(workbookXmlFile.content as List<int>);
+
+    expect(xml, contains('name="$kAllSalesLinesSheetName"'));
+    expect(xml, contains('name="$kAllSalesSummarySheetName"'));
+    expect(xml, contains('name="$kAllExpensesSheetName"'));
+    expect(xml, contains('name="$kAllExpensesSummarySheetName"'));
+    expect(xml, contains('name="$kAllProductionLinesSheetName"'));
+    expect(xml, contains('name="$kAllProductionSummarySheetName"'));
+    expect(xml, contains('name="$kAllUnsoldLinesSheetName"'));
+    expect(xml, contains('name="$kAllUnsoldSummarySheetName"'));
+  });
 }
+

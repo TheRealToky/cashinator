@@ -11,6 +11,17 @@ library;
 const String kSalesLinesSheetName = 'Sales Lines';
 const String kDaySummarySheetName = 'Day Summary';
 
+/// Sheet names used when compiling all four exports into one single workbook.
+const String kAllSalesLinesSheetName = 'Sales Lines';
+const String kAllSalesSummarySheetName = 'Sales Day Summary';
+const String kAllExpensesSheetName = 'Expenses';
+const String kAllExpensesSummarySheetName = 'Expenses Day Summary';
+const String kAllProductionLinesSheetName = 'Production Lines';
+const String kAllProductionSummarySheetName = 'Production Day Summary';
+const String kAllUnsoldLinesSheetName = 'Unsold Lines';
+const String kAllUnsoldSummarySheetName = 'Unsold Day Summary';
+
+
 /// `Sales Lines` header, in order. All 22 sample exports agree on this row.
 const List<String> kSalesLinesHeader = [
   'Line Id',

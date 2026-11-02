@@ -96,6 +96,30 @@ class UnsoldExportResult {
   String get fileName => p.basename(file.path);
 }
 
+/// The result of a successful all-in-one export compiling sales, expenses,
+/// production, and unsold data.
+class AllExportResult {
+  const AllExportResult({
+    required this.file,
+    required this.orderCount,
+    required this.salesLineCount,
+    required this.expenseCount,
+    required this.productionRowCount,
+    required this.unsoldRowCount,
+    required this.dayCount,
+  });
+
+  final File file;
+  final int orderCount;
+  final int salesLineCount;
+  final int expenseCount;
+  final int productionRowCount;
+  final int unsoldRowCount;
+  final int dayCount;
+
+  String get fileName => p.basename(file.path);
+}
+
 /// Pulls orders, expenses, production logs or unsold logs for a date range,
 /// renders the workbook and writes it to disk.
 class ExportRepository {
@@ -311,6 +335,69 @@ class ExportRepository {
     );
   }
 
+  /// Exports all records (sales, expenses, production, unsold) recorded in
+  /// [from]..[to] inclusive into a single compiled workbook.
+  ///
+  /// Throws [NotFoundException] when the range holds no records in any category.
+  Future<AllExportResult> exportAllRange({
+    required DateTime from,
+    required DateTime to,
+    Directory? directoryOverride,
+  }) async {
+    final orders = await _orders.ordersInRange(from: from, to: to);
+    final expenses = await _expenses.expensesInRange(from: from, to: to);
+    final productionLogs = await _production.logsInRange(from: from, to: to);
+    final unsoldLogs = await _unsold.logsInRange(from: from, to: to);
+
+    if (orders.isEmpty &&
+        expenses.isEmpty &&
+        productionLogs.isEmpty &&
+        unsoldLogs.isEmpty) {
+      throw const NotFoundException(
+        'There are no records in that date range yet.',
+      );
+    }
+
+    final salesData = _builder.build(orders: orders, from: from, to: to);
+    final expenseData =
+        _expenseBuilder.build(expenses: expenses, from: from, to: to);
+    final productionData =
+        _productionBuilder.build(logs: productionLogs, from: from, to: to);
+    final unsoldData =
+        _unsoldBuilder.build(logs: unsoldLogs, from: from, to: to);
+
+    final bytes = _exporter.buildAllWorkbookBytes(
+      sales: salesData,
+      expenses: expenseData,
+      production: productionData,
+      unsold: unsoldData,
+    );
+
+    final directory = directoryOverride ?? await _exportDirectory();
+    final file = File(p.join(directory.path, _allFileNameFor(from, to)));
+
+    try {
+      await file.parent.create(recursive: true);
+      await file.writeAsBytes(bytes, flush: true);
+    } on FileSystemException catch (error) {
+      throw StorageException(
+        'Could not write the export file. Check that the tablet has free '
+        'storage space.',
+        cause: error,
+      );
+    }
+
+    return AllExportResult(
+      file: file,
+      orderCount: orders.length,
+      salesLineCount: salesData.salesLines.length,
+      expenseCount: expenses.length,
+      productionRowCount: productionData.lines.length,
+      unsoldRowCount: unsoldData.lines.length,
+      dayCount: salesData.daySummaries.length,
+    );
+  }
+
   /// Where exports land on the tablet.
   ///
   /// Uses the app's external files directory on Android, which is reachable
@@ -338,6 +425,10 @@ class ExportRepository {
     }
   }
 
+  /// The file name that would be used for an all-in-one export across [from]..[to].
+  String allFileName({required DateTime from, required DateTime to}) =>
+      _allFileNameFor(from, to);
+
   /// The file name that would be used for a sales export across [from]..[to].
   String salesFileName({required DateTime from, required DateTime to}) =>
       _fileNameFor(from, to);
@@ -363,7 +454,7 @@ class ExportRepository {
     try {
       final directory = directoryOverride ?? await _exportDirectory();
       final file = File(p.join(directory.path, _fileNameFor(from, to)));
-      return (await file.exists()) ? file : null;
+      return file.existsSync() ? file : null;
     } catch (_) {
       return null;
     }
@@ -378,7 +469,7 @@ class ExportRepository {
     try {
       final directory = directoryOverride ?? await _exportDirectory();
       final file = File(p.join(directory.path, _expenseFileNameFor(from, to)));
-      return (await file.exists()) ? file : null;
+      return file.existsSync() ? file : null;
     } catch (_) {
       return null;
     }
@@ -394,7 +485,7 @@ class ExportRepository {
       final directory = directoryOverride ?? await _exportDirectory();
       final file =
           File(p.join(directory.path, _productionFileNameFor(from, to)));
-      return (await file.exists()) ? file : null;
+      return file.existsSync() ? file : null;
     } catch (_) {
       return null;
     }
@@ -410,7 +501,22 @@ class ExportRepository {
       final directory = directoryOverride ?? await _exportDirectory();
       final file =
           File(p.join(directory.path, _unsoldFileNameFor(from, to)));
-      return (await file.exists()) ? file : null;
+      return file.existsSync() ? file : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Checks if an all-in-one export file already exists on disk for [from]..[to].
+  Future<File?> findExistingAllExport({
+    required DateTime from,
+    required DateTime to,
+    Directory? directoryOverride,
+  }) async {
+    try {
+      final directory = directoryOverride ?? await _exportDirectory();
+      final file = File(p.join(directory.path, _allFileNameFor(from, to)));
+      return file.existsSync() ? file : null;
     } catch (_) {
       return null;
     }
@@ -441,6 +547,10 @@ class ExportRepository {
       return const [];
     }
   }
+
+  /// `pastry_all_YYYY-MM-DD.xlsx`. Sorts alongside sales, expenses, production and unsold.
+  String _allFileNameFor(DateTime from, DateTime to) =>
+      _rangeFileName('pastry_all', from, to);
 
   /// Mirrors the legacy naming: `pastry_sales_YYYY-MM-DD.xlsx` for one day,
   /// `pastry_sales_YYYY-MM-DD_to_YYYY-MM-DD.xlsx` for a range.

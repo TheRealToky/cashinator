@@ -127,7 +127,64 @@ class ExcelExporter {
     }
   }
 
+  /// Renders a single workbook compiling all four datasets (sales, expenses,
+  /// production, unsold) across the date range.
+  ///
+  /// Each dataset gets its own detail and summary sheets with distinct names,
+  /// preserving the column formats and summary calculations of each domain.
+  List<int> buildAllWorkbookBytes({
+    required ExportWorkbookData sales,
+    required ExpenseWorkbookData expenses,
+    required ProductionWorkbookData production,
+    required UnsoldWorkbookData unsold,
+  }) {
+    final workbook = Workbook();
+    try {
+      final salesSheet = workbook.worksheets[0];
+      salesSheet.name = kAllSalesLinesSheetName;
+      _writeSalesLines(salesSheet, sales);
+
+      final salesSummarySheet =
+          workbook.worksheets.addWithName(kAllSalesSummarySheetName);
+      _writeDaySummary(salesSummarySheet, sales);
+
+      final expensesSheet =
+          workbook.worksheets.addWithName(kAllExpensesSheetName);
+      _writeExpenses(expensesSheet, expenses);
+
+      final expenseSummarySheet =
+          workbook.worksheets.addWithName(kAllExpensesSummarySheetName);
+      _writeExpenseDaySummary(expenseSummarySheet, expenses);
+
+      final productionSheet =
+          workbook.worksheets.addWithName(kAllProductionLinesSheetName);
+      _writeProductionLines(productionSheet, production);
+
+      final productionSummarySheet =
+          workbook.worksheets.addWithName(kAllProductionSummarySheetName);
+      _writeProductionDaySummary(productionSummarySheet, production);
+
+      final unsoldSheet =
+          workbook.worksheets.addWithName(kAllUnsoldLinesSheetName);
+      _writeUnsoldLines(unsoldSheet, unsold);
+
+      final unsoldSummarySheet =
+          workbook.worksheets.addWithName(kAllUnsoldSummarySheetName);
+      _writeUnsoldDaySummary(unsoldSummarySheet, unsold);
+
+      return _normaliseFormulaBytes(workbook.saveAsStream());
+    } on Object catch (error) {
+      throw StorageException(
+        'Could not generate the Excel file.',
+        cause: error,
+      );
+    } finally {
+      workbook.dispose();
+    }
+  }
+
   /// Removes the non-standard leading `=` xlsio writes inside worksheet `<f>`
+
   /// formula elements.
   ///
   /// OOXML stores a formula without its leading equals sign — the reference

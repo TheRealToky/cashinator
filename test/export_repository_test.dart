@@ -1,9 +1,11 @@
 import 'dart:io';
 
+import 'package:cashinator/core/app_exception.dart';
 import 'package:cashinator/data/db/app_database.dart';
 import 'package:cashinator/repositories/expense_repository.dart';
 import 'package:cashinator/repositories/export_repository.dart';
 import 'package:cashinator/repositories/order_repository.dart';
+import 'package:cashinator/repositories/payment_method_repository.dart';
 import 'package:cashinator/repositories/production_repository.dart';
 import 'package:cashinator/repositories/unsold_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,16 +19,17 @@ void main() {
   });
 
   late AppDatabase database;
+  late ExpenseRepository expenseRepo;
   late ExportRepository exportRepo;
   late Directory tempDir;
 
   setUp(() async {
     database = await AppDatabase.open(fileName: inMemoryDatabasePath);
     final orders = OrderRepository(database);
-    final expenses = ExpenseRepository(database);
+    expenseRepo = ExpenseRepository(database);
     final production = ProductionRepository(database);
     final unsold = UnsoldRepository(database);
-    exportRepo = ExportRepository(orders, expenses, production, unsold);
+    exportRepo = ExportRepository(orders, expenseRepo, production, unsold);
     tempDir = await Directory.systemTemp.createTemp('cashinator_export_test_');
   });
 
@@ -80,7 +83,21 @@ void main() {
       );
     });
 
-    test('findExistingSalesExport and findExistingExpenseExport locate files',
+    test('names single-day and range all files correctly', () {
+      final day1 = DateTime(2026, 9, 9);
+      final day2 = DateTime(2026, 9, 10);
+
+      expect(
+        exportRepo.allFileName(from: day1, to: day1),
+        'pastry_all_2026-09-09.xlsx',
+      );
+      expect(
+        exportRepo.allFileName(from: day1, to: day2),
+        'pastry_all_2026-09-09_to_2026-09-10.xlsx',
+      );
+    });
+
+    test('findExistingSalesExport, findExistingExpenseExport, and findExistingAllExport locate files',
         () async {
       final day = DateTime(2026, 9, 9);
       final notFoundSales = await exportRepo.findExistingSalesExport(
@@ -124,6 +141,18 @@ void main() {
       );
       expect(foundUnsold, isNotNull);
       expect(foundUnsold!.path, unsoldFile.path);
+
+      final allFile =
+          File(p.join(tempDir.path, 'pastry_all_2026-09-09.xlsx'));
+      await allFile.writeAsString('mock content');
+
+      final foundAll = await exportRepo.findExistingAllExport(
+        from: day,
+        to: day,
+        directoryOverride: tempDir,
+      );
+      expect(foundAll, isNotNull);
+      expect(foundAll!.path, allFile.path);
     });
 
     test('listRecentExports returns .xlsx files sorted newest first', () async {
@@ -147,5 +176,37 @@ void main() {
       expect(p.basename(recent.first.path), 'pastry_sales_2026-09-02.xlsx');
       expect(p.basename(recent.last.path), 'pastry_sales_2026-09-01.xlsx');
     });
+
+    test('exportAllRange throws NotFoundException when completely empty', () async {
+      final day = DateTime(2026, 9, 9);
+      expect(
+        () => exportRepo.exportAllRange(from: day, to: day, directoryOverride: tempDir),
+        throwsA(isA<NotFoundException>()),
+      );
+    });
+
+    test('exportAllRange generates compiled workbook when records exist', () async {
+      final day = DateTime(2026, 9, 9);
+      final methods = await PaymentMethodRepository(database).activeMethods();
+      final cash = methods.firstWhere((m) => m.name == 'Cash');
+      await expenseRepo.createExpense(
+        name: 'Sugar 50kg',
+        amount: 45000,
+        paymentMethod: cash,
+        now: day,
+      );
+
+      final result = await exportRepo.exportAllRange(
+        from: day,
+        to: day,
+        directoryOverride: tempDir,
+      );
+
+      expect(result.file.existsSync(), isTrue);
+      expect(result.fileName, 'pastry_all_2026-09-09.xlsx');
+      expect(result.expenseCount, 1);
+      expect(result.orderCount, 0);
+    });
   });
 }
+

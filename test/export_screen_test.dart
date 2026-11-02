@@ -68,6 +68,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Excel export'), findsOneWidget);
+    expect(find.text('Export all'), findsOneWidget);
     expect(find.text('Sales Excel file'), findsOneWidget);
     expect(find.text('Expenses Excel file'), findsOneWidget);
     expect(find.text('Production Excel file'), findsOneWidget);
@@ -81,19 +82,38 @@ void main() {
         "${today.year.toString().padLeft(4, '0')}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}";
     final existingFile =
         File(p.join(tempDir.path, 'pastry_sales_$todayIso.xlsx'));
-    await existingFile.writeAsString('test content');
+    existingFile.writeAsStringSync('test content');
 
     await tester.pumpWidget(buildScreen());
-    // One frame lets initState postFrameCallback fire, then a short duration
-    // lets the async file-existence check resolve and setState rebuild.
-    // Using pump(duration) avoids the infinite-wait of pumpAndSettle() which
-    // hangs when the _ExistingExportCard's InkWell animation never settles.
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
-    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pumpAndSettle();
 
     expect(find.text('Date range'), findsOneWidget);
     expect(find.text('Sales export already saved on device'), findsOneWidget);
     expect(find.text('Share file (WhatsApp, Xender, …)'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('shows share button when existing export all file is found',
+      (tester) async {
+    final today = DateTime.now();
+    final todayIso =
+        "${today.year.toString().padLeft(4, '0')}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}";
+    final existingFile =
+        File(p.join(tempDir.path, 'pastry_all_$todayIso.xlsx'));
+    existingFile.writeAsStringSync('test content');
+
+    await tester.pumpWidget(buildScreen());
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Date range'), findsOneWidget);
+    expect(find.text('Export all already saved on device'), findsOneWidget);
+    expect(find.text('Share file (WhatsApp, Xender, …)'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
   });
 }
+
+
